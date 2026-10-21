@@ -4,6 +4,7 @@ from http.cookies import SimpleCookie
 from decimal import Decimal,ROUND_HALF_UP
 from pathlib import Path
 ROOT=Path(__file__).parent
+CATALOG=json.loads((ROOT/'static/destinations.json').read_text())
 DB=os.environ.get('TRAVEL_DB',str(ROOT/'travel.sqlite3'))
 def db():
  c=sqlite3.connect(DB);c.row_factory=sqlite3.Row;c.execute('PRAGMA foreign_keys=ON');return c
@@ -22,6 +23,10 @@ def init():
  CREATE TABLE IF NOT EXISTS history(id INTEGER PRIMARY KEY,trip TEXT,actor TEXT,action TEXT,detail TEXT,created TEXT);
  CREATE TABLE IF NOT EXISTS notices(id INTEGER PRIMARY KEY,user TEXT,text TEXT,created TEXT,seen INTEGER DEFAULT 0);
  ''')
+ with db() as c:
+  columns={r['name'] for r in c.execute('PRAGMA table_info(trips)')}
+  for column in ['country','city']:
+   if column not in columns:c.execute('ALTER TABLE trips ADD COLUMN '+column+" TEXT NOT NULL DEFAULT ''")
 def entries(c,t,u=None):
  a=rows(c,'SELECT * FROM entries WHERE trip=? ORDER BY created DESC',(t,))
  for e in a:e['data']=json.loads(e['data'])
@@ -82,7 +87,10 @@ class Handler(SimpleHTTPRequestHandler):
     if path=='/api/preferences':c.execute('UPDATE users SET notifications=? WHERE id=?',(int(bool(d['notifications'])),uid));c.execute('UPDATE notices SET seen=1 WHERE user=?',(uid,));self.send(200,{});return
     if path=='/api/trips':
      t=secrets.token_hex(12);assert d['name'].strip(),'Укажите название';cur=d['currency'].upper();assert len(cur)==3 and cur.isalpha(),'Используйте код валюты из трёх букв'
-     c.execute('INSERT INTO trips VALUES(?,?,?,?)',(t,d['name'][:100],cur,uid));c.execute('INSERT INTO members VALUES(?,?)',(t,uid));self.send(200,{'id':t});return
+     country=d.get('country','').strip();city=d.get('city','').strip()
+     if country or city:
+      destination=next((x for x in CATALOG['countries'] if x['name']==country),None);assert destination and city in destination['cities'],'Выберите город из списка для выбранной страны'
+     c.execute('INSERT INTO trips(id,name,currency,owner,country,city) VALUES(?,?,?,?,?,?)',(t,d['name'][:100],cur,uid,country,city));c.execute('INSERT INTO members VALUES(?,?)',(t,uid));self.send(200,{'id':t});return
     if path=='/api/accept':
      c.execute('BEGIN IMMEDIATE');inv=c.execute('SELECT * FROM invites WHERE token=? AND used=0',(d['token'],)).fetchone();assert inv,'Приглашение не найдено или уже принято';t=inv['trip'];assert not inv['email'] or inv['email']==u['email'],'Приглашение для другого email'
      assert c.execute('SELECT COUNT(*) FROM members WHERE trip=?',(t,)).fetchone()[0]<10,'В поездке уже 10 участников'

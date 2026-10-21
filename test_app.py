@@ -14,6 +14,9 @@ class AppTests(unittest.TestCase):
   for i in range(11):
    c=client();req(c,'register',{'name':'Участник '+str(i),'email':str(i)+'@test.ru','password':'password12345'});clients.append(c);users.append(req(c,'me')['user']['id'])
   a=clients[0];t=req(a,'trips',{'name':'Горы','currency':'RUB'})['id']
+  destination=req(a,'trips',{'name':'Стамбул','currency':'TRY','country':'Турция','city':'Стамбул'})['id']
+  saved=req(a,'trip?trip='+destination)['trip'];self.assertEqual((saved['country'],saved['city'],saved['currency']),('Турция','Стамбул','TRY'))
+  with self.assertRaises(urllib.error.HTTPError):req(a,'trips',{'name':'Ошибка','currency':'EUR','country':'Турция','city':'Париж'})
   for i in range(1,10):tok=req(a,'invite',{'trip':t})['token'];req(clients[i],'accept',{'token':tok})
   tok=req(a,'invite',{'trip':t})['token']
   with self.assertRaises(urllib.error.HTTPError):req(clients[10],'accept',{'token':tok})
